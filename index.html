@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Season Ledger — Draft Night Results</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --field:#16321F;
+    --field-2:#0F2116;
+    --field-3:#0A1810;
+    --chalk:#F2EFE4;
+    --chalk-dim:#9FB0A2;
+    --gold:#CDA43B;
+    --clay:#A2402C;
+    --line: rgba(242,239,228,0.14);
+    --line-strong: rgba(242,239,228,0.28);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      repeating-linear-gradient(90deg, rgba(242,239,228,0.025) 0px, rgba(242,239,228,0.025) 1px, transparent 1px, transparent 64px),
+      var(--field-3);
+    color:var(--chalk);
+    font-family:'Inter',system-ui,sans-serif;
+    min-height:100vh;
+    padding:28px 32px 60px;
+  }
+
+  header{
+    display:flex; justify-content:space-between; align-items:flex-end;
+    flex-wrap:wrap; gap:16px;
+    border-bottom:2px solid var(--line-strong);
+    padding-bottom:18px; margin-bottom:22px;
+  }
+  header h1{font-size:clamp(30px,5vw,48px); margin:0; color:var(--chalk); line-height:0.95; font-family:'Anton',sans-serif;}
+  header h1 span{color:var(--gold);}
+  header p.sub{margin:6px 0 0; color:var(--chalk-dim); font-size:14px; max-width:56ch;}
+  .setup{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+
+  button{
+    font-family:'Inter',sans-serif; cursor:pointer; border-radius:2px;
+    border:1px solid var(--line-strong); background:transparent; color:var(--chalk);
+    padding:9px 14px; font-size:13px; font-weight:600; transition:border-color .15s, background .15s;
+  }
+  button:hover{border-color:var(--gold);}
+  button:disabled{opacity:0.35; cursor:not-allowed;}
+  .btn-text{border:none; padding:6px 4px; color:var(--chalk-dim); font-weight:500; text-decoration:underline; text-underline-offset:3px;}
+  .btn-text:hover{color:var(--chalk); border:none;}
+
+  /* ---------- scoring toggle ---------- */
+  .mode-toggle{display:flex; border:1px solid var(--line-strong);}
+  .mode-toggle button{border:none; padding:9px 14px; border-radius:0;}
+  .mode-toggle button + button{border-left:1px solid var(--line-strong);}
+  .mode-toggle button.active{background:var(--gold); color:var(--field-3);}
+  .mode-note{font-size:11px; color:var(--chalk-dim); margin-top:8px; max-width:60ch;}
+
+  /* ---------- leaderboard ---------- */
+  .leaderboard{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:24px 0;}
+  .rankcard{background:var(--field-2); border-top:3px solid var(--line-strong); padding:14px 16px 16px; position:relative;}
+  .rankcard.leader{border-top-color:var(--gold); box-shadow:0 0 0 2px rgba(205,164,58,0.3);}
+  .rankcard .rank{font-size:11px; color:var(--chalk-dim); text-transform:uppercase; letter-spacing:0.08em;}
+  .rankcard .rname{font-family:'Anton',sans-serif; font-size:20px; margin:2px 0 6px;}
+  .rankcard .pts{font-family:'Anton',sans-serif; font-size:42px; color:var(--gold); line-height:1;}
+  .rankcard .ptslabel{font-size:11px; color:var(--chalk-dim); margin-bottom:8px;}
+  .rankcard .stat-row{display:flex; justify-content:space-between; font-size:11px; color:var(--chalk-dim); border-top:1px solid var(--line); padding-top:8px;}
+  .rankcard .stat-row b{color:var(--chalk);}
+
+  /* ---------- team groups ---------- */
+  .owner-group{margin-bottom:26px;}
+  .owner-head{
+    display:flex; justify-content:space-between; align-items:baseline;
+    border-bottom:1px solid var(--line-strong); padding-bottom:8px; margin-bottom:10px;
+  }
+  .owner-head h2{font-family:'Anton',sans-serif; font-size:22px; margin:0;}
+  .owner-head .sub{font-size:12px; color:var(--chalk-dim);}
+
+  .team-row{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    background:var(--field-2); border:1px solid var(--line-strong);
+    padding:10px 14px; margin-bottom:8px;
+  }
+  .team-row .stripe{width:6px; align-self:stretch; flex:none; margin:-10px 0; margin-right:2px;}
+  .team-row .id-block{min-width:150px;}
+  .team-row .id-block .div{font-size:10px; color:var(--chalk-dim); text-transform:uppercase; letter-spacing:0.05em;}
+  .team-row .id-block .nm{font-family:'Anton',sans-serif; font-size:17px;}
+  .team-row .id-block .price{font-size:11px; color:var(--chalk-dim); margin-top:1px;}
+
+  .counter-group{display:flex; gap:14px;}
+  .counter{display:flex; flex-direction:column; align-items:center; gap:3px;}
+  .counter .lbl{font-size:9px; color:var(--chalk-dim); text-transform:uppercase; letter-spacing:0.06em;}
+  .counter .ctrl{display:flex; align-items:center; gap:5px;}
+  .counter button{width:22px; height:22px; padding:0; font-size:13px; line-height:1;}
+  .counter .val{font-family:'Anton',sans-serif; font-size:16px; min-width:16px; text-align:center;}
+
+  .ladder{display:flex; gap:4px;}
+  .ladder .node{
+    width:74px; text-align:center; cursor:pointer; border:1px solid var(--line-strong);
+    background:var(--field-3); padding:5px 2px; color:var(--chalk-dim);
+  }
+  .ladder .node:hover{border-color:var(--gold);}
+  .ladder .node.filled{background:var(--gold); border-color:var(--gold); color:var(--field-3);}
+  .ladder .node .t{font-size:9px; text-transform:uppercase; letter-spacing:0.03em; display:block;}
+  .ladder .node .p{font-size:9px; opacity:0.75; display:block; margin-top:1px;}
+
+  .team-points{font-family:'Anton',sans-serif; font-size:26px; color:var(--gold); min-width:64px; text-align:right; margin-left:auto;}
+  .team-value{font-size:10px; color:var(--chalk-dim); text-align:right; min-width:64px; margin-left:auto;}
+
+  .unclaimed{opacity:0.6;}
+
+  footer{margin-top:20px; font-size:12px; color:var(--chalk-dim); opacity:0.6; text-align:center;}
+
+  @media (max-width:1100px){
+    .leaderboard{grid-template-columns:repeat(2,1fr);}
+    .team-points, .team-value{margin-left:0; text-align:left;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>SEASON <span>LEDGER</span></h1>
+    <p class="sub">Regular season wins minus ties, plus a bonus every time your team wins a playoff round. Update it week to week as results come in.</p>
+    <p class="sub" id="syncStatus" style="margin-top:6px;">Connecting to live data…</p>
+  </div>
+  <div class="setup">
+    <div>
+      <div class="mode-toggle">
+        <button type="button" id="modeLinear">3-5-7-9</button>
+        <button type="button" id="modeFib">3-5-8-13</button>
+      </div>
+      <div class="mode-note" id="modeNote"></div>
+    </div>
+  </div>
+</header>
+
+<div class="setup" style="margin-bottom:10px;">
+  <button id="btnImportTrigger">Import</button>
+  <input type="file" id="importFile" accept="application/json" style="display:none;">
+  <button id="btnExport">Export</button>
+  <button id="btnSyncScores">Sync scores now</button>
+  <span class="mode-note" id="scoreSyncStatus" style="align-self:center;"></span>
+  <button id="btnResetSeason" class="btn-text">Reset all results</button>
+</div>
+
+<div class="leaderboard" id="leaderboard"></div>
+
+<div id="groups"></div>
+
+<footer>Runs entirely in this tab — nothing saves automatically. Export after each week's updates, and Import to pick back up (also accepts a Draft Night roster export to start a fresh ledger).</footer>
+
+<script>
+// ---------------------------------------------------------------
+// Scoring
+// ---------------------------------------------------------------
+// fixed point value awarded for winning each round, independent of the others
+// (so a bye team that skips the Wild Card round still gets full credit for
+// every round it actually wins, including the Super Bowl)
+const PLAYOFF_STEP = {
+  linear: [3, 5, 7, 9],
+  fib:    [3, 5, 8, 13],
+};
+const ROUND_KEYS = ['wc', 'div', 'conf', 'sb'];
+const LADDER_LABELS = ['Wild Card', 'Divisional', 'Conf. Championship', 'Super Bowl'];
+
+// ---------------------------------------------------------------
+// Default roster — pulled in from the completed Draft Night auction.
+// Import a fresh Draft Night export any time to replace this.
+// ---------------------------------------------------------------
+const DEFAULT_ROSTER = {
+  drafters: [
+    {id:'d0', name:'Dan'},
+    {id:'d1', name:'Kelvin'},
+    {id:'d2', name:'Michael'},
+    {id:'d3', name:'Ted'},
+  ],
+  teams: [
+    {id:'buf', city:'Buffalo', nick:'Bills', conf:'AFC', div:'East', c1:'#00338D', c2:'#C60C30', owner:'d3', price:55},
+    {id:'mia', city:'Miami', nick:'Dolphins', conf:'AFC', div:'East', c1:'#008E97', c2:'#FC4C02', owner:'d0', price:7},
+    {id:'ne', city:'New England', nick:'Patriots', conf:'AFC', div:'East', c1:'#002244', c2:'#C60C30', owner:'d0', price:42},
+    {id:'nyj', city:'New York', nick:'Jets', conf:'AFC', div:'East', c1:'#125740', c2:'#000000', owner:'d1', price:12},
+    {id:'bal', city:'Baltimore', nick:'Ravens', conf:'AFC', div:'North', c1:'#241773', c2:'#9E7C0C', owner:'d3', price:47},
+    {id:'cin', city:'Cincinnati', nick:'Bengals', conf:'AFC', div:'North', c1:'#FB4F14', c2:'#000000', owner:'d2', price:36},
+    {id:'cle', city:'Cleveland', nick:'Browns', conf:'AFC', div:'North', c1:'#311D00', c2:'#FF3C00', owner:'d2', price:7},
+    {id:'pit', city:'Pittsburgh', nick:'Steelers', conf:'AFC', div:'North', c1:'#FFB612', c2:'#101820', owner:'d1', price:18},
+    {id:'hou', city:'Houston', nick:'Texans', conf:'AFC', div:'South', c1:'#03202F', c2:'#A71930', owner:'d2', price:38},
+    {id:'ind', city:'Indianapolis', nick:'Colts', conf:'AFC', div:'South', c1:'#002C5F', c2:'#A2AAAD', owner:'d1', price:20},
+    {id:'jax', city:'Jacksonville', nick:'Jaguars', conf:'AFC', div:'South', c1:'#006778', c2:'#D7A22A', owner:'d3', price:35},
+    {id:'ten', city:'Tennessee', nick:'Titans', conf:'AFC', div:'South', c1:'#0C2340', c2:'#4B92DB', owner:'d1', price:10},
+    {id:'den', city:'Denver', nick:'Broncos', conf:'AFC', div:'West', c1:'#FB4F14', c2:'#002244', owner:'d2', price:32},
+    {id:'kc', city:'Kansas City', nick:'Chiefs', conf:'AFC', div:'West', c1:'#E31837', c2:'#FFB81C', owner:'d0', price:43},
+    {id:'lv', city:'Las Vegas', nick:'Raiders', conf:'AFC', div:'West', c1:'#000000', c2:'#A5ACAF', owner:'d1', price:10},
+    {id:'lac', city:'Los Angeles', nick:'Chargers', conf:'AFC', div:'West', c1:'#0080C6', c2:'#FFC20E', owner:'d3', price:42},
+    {id:'dal', city:'Dallas', nick:'Cowboys', conf:'NFC', div:'East', c1:'#041E42', c2:'#869397', owner:'d1', price:35},
+    {id:'nyg', city:'New York', nick:'Giants', conf:'NFC', div:'East', c1:'#0B2265', c2:'#A71930', owner:'d1', price:22},
+    {id:'phi', city:'Philadelphia', nick:'Eagles', conf:'NFC', div:'East', c1:'#004C54', c2:'#A5ACAF', owner:'d2', price:35},
+    {id:'was', city:'Washington', nick:'Commanders', conf:'NFC', div:'East', c1:'#5A1414', c2:'#FFB612', owner:'d1', price:14},
+    {id:'chi', city:'Chicago', nick:'Bears', conf:'NFC', div:'North', c1:'#0B162A', c2:'#C83803', owner:'d1', price:33},
+    {id:'det', city:'Detroit', nick:'Lions', conf:'NFC', div:'North', c1:'#0076B6', c2:'#B0B7BC', owner:'d2', price:40},
+    {id:'gb', city:'Green Bay', nick:'Packers', conf:'NFC', div:'North', c1:'#203731', c2:'#FFB612', owner:'d0', price:38},
+    {id:'min', city:'Minnesota', nick:'Vikings', conf:'NFC', div:'North', c1:'#4F2683', c2:'#FFC62F', owner:'d2', price:23},
+    {id:'atl', city:'Atlanta', nick:'Falcons', conf:'NFC', div:'South', c1:'#A71930', c2:'#000000', owner:'d1', price:16},
+    {id:'car', city:'Carolina', nick:'Panthers', conf:'NFC', div:'South', c1:'#0085CA', c2:'#101820', owner:'d1', price:14},
+    {id:'no', city:'New Orleans', nick:'Saints', conf:'NFC', div:'South', c1:'#D3BC8D', c2:'#101820', owner:'d2', price:16},
+    {id:'tb', city:'Tampa Bay', nick:'Buccaneers', conf:'NFC', div:'South', c1:'#D50A0A', c2:'#34302B', owner:'d0', price:28},
+    {id:'ari', city:'Arizona', nick:'Cardinals', conf:'NFC', div:'West', c1:'#97233F', c2:'#000000', owner:'d1', price:7},
+    {id:'lar', city:'Los Angeles', nick:'Rams', conf:'NFC', div:'West', c1:'#003594', c2:'#FFA300', owner:'d0', price:74},
+    {id:'sf', city:'San Francisco', nick:'49ers', conf:'NFC', div:'West', c1:'#AA0000', c2:'#B3995D', owner:'d1', price:39},
+    {id:'sea', city:'Seattle', nick:'Seahawks', conf:'NFC', div:'West', c1:'#002244', c2:'#69BE28', owner:'d3', price:55},
+  ]
+};
+
+// ---------------------------------------------------------------
+// State
+// ---------------------------------------------------------------
+function freshSeasonState(roster, scoringMode){
+  return {
+    scoringMode: scoringMode || 'fib',
+    drafters: roster.drafters.map(d => ({id:d.id, name:d.name})),
+    teams: roster.teams.map(t => ({
+      id:t.id, city:t.city, nick:t.nick, conf:t.conf, div:t.div, c1:t.c1, c2:t.c2,
+      owner: t.owner ?? null, price: (t.price ?? null),
+      wins:0, losses:0, ties:0,
+      rounds: {wc:false, div:false, conf:false, sb:false},
+    })),
+  };
+}
+
+// migrate an older export (single playoffRound integer) to independent round flags
+function migrateTeam(t){
+  if(!t.rounds){
+    const r = t.playoffRound || 0;
+    t.rounds = {wc: r >= 1, div: r >= 2, conf: r >= 3, sb: r >= 4};
+    delete t.playoffRound;
+  }
+  return t;
+}
+
+let state = null; // populated live from Firebase once it connects — see bottom of file
+
+// ---------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------
+function team(id){ return state.teams.find(t => t.id === id); }
+function drafter(id){ return state.drafters.find(d => d.id === id); }
+function teamPoints(t){
+  const steps = PLAYOFF_STEP[state.scoringMode];
+  const playoffPts = ROUND_KEYS.reduce((s, key, i) => s + (t.rounds[key] ? steps[i] : 0), 0);
+  return (t.wins - t.ties) + playoffPts;
+}
+function drafterTotals(d){
+  const owned = state.teams.filter(t => t.owner === d.id);
+  const points = owned.reduce((s, t) => s + teamPoints(t), 0);
+  const spent = owned.reduce((s, t) => s + (t.price || 0), 0);
+  return {owned, points, spent};
+}
+
+// ---------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------
+function bumpStat(teamId, stat, delta){
+  const t = team(teamId);
+  t[stat] = Math.max(0, (t[stat] || 0) + delta);
+  syncAndRender();
+}
+
+function toggleRound(teamId, key){
+  const t = team(teamId);
+  t.rounds[key] = !t.rounds[key];
+  syncAndRender();
+}
+
+function setScoringMode(mode){
+  state.scoringMode = mode;
+  syncAndRender();
+}
+
+function resetSeason(){
+  if(!confirm('Clear every win, tie, and playoff result? Rosters and prices stay put.')) return;
+  state.teams.forEach(t => {
+    t.wins = 0; t.losses = 0; t.ties = 0;
+    t.rounds = {wc:false, div:false, conf:false, sb:false};
+  });
+  syncAndRender();
+}
+
+function exportState(){
+  const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'season-ledger-progress.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importFile(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const parsed = JSON.parse(reader.result);
+      if(parsed.scoringMode && Array.isArray(parsed.teams) && parsed.teams.length &&
+         ('wins' in parsed.teams[0]) && ('rounds' in parsed.teams[0] || 'playoffRound' in parsed.teams[0])){
+        parsed.teams.forEach(migrateTeam);
+        state = parsed; // full season-ledger export (possibly older format, now migrated)
+      } else if(Array.isArray(parsed.drafters) && Array.isArray(parsed.teams)){
+        if(!confirm('This looks like a Draft Night roster with no results yet. Start a fresh ledger from it?')) return;
+        state = freshSeasonState(parsed, state.scoringMode);
+      } else {
+        throw new Error('unrecognized');
+      }
+      syncAndRender();
+    }catch(e){
+      alert('That file doesn\'t look like a Draft Night or Season Ledger export.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ---------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------
+function render(){
+  renderModeToggle();
+  renderLeaderboard();
+  renderGroups();
+}
+
+function renderModeToggle(){
+  document.getElementById('modeLinear').className = state.scoringMode === 'linear' ? 'active' : '';
+  document.getElementById('modeFib').className = state.scoringMode === 'fib' ? 'active' : '';
+  const steps = PLAYOFF_STEP[state.scoringMode];
+  document.getElementById('modeNote').textContent =
+    `Wild Card +${steps[0]}, Divisional +${steps[1]}, Conf. Championship +${steps[2]}, Super Bowl +${steps[3]}. Tick whichever rounds each team actually won — including any bonus you choose to award a bye team for the round it skipped.`;
+}
+
+function renderLeaderboard(){
+  const el = document.getElementById('leaderboard');
+  const rows = state.drafters
+    .map(d => ({d, ...drafterTotals(d)}))
+    .sort((a, b) => b.points - a.points);
+  const topScore = rows.length ? rows[0].points : null;
+  el.innerHTML = rows.map((r, i) => `
+    <div class="rankcard ${r.points === topScore ? 'leader' : ''}">
+      <div class="rank">#${i + 1}</div>
+      <div class="rname">${r.d.name}</div>
+      <div class="pts">${r.points}</div>
+      <div class="ptslabel">points</div>
+      <div class="stat-row"><span>Teams</span><b>${r.owned.length}</b></div>
+      <div class="stat-row"><span>Spent</span><b>$${r.spent}</b></div>
+      <div class="stat-row"><span>Pts / $</span><b>${r.spent ? (r.points / r.spent).toFixed(2) : '—'}</b></div>
+    </div>
+  `).join('');
+}
+
+function renderGroups(){
+  const el = document.getElementById('groups');
+  el.innerHTML = '';
+
+  const ranked = state.drafters
+    .map(d => ({d, ...drafterTotals(d)}))
+    .sort((a, b) => b.points - a.points);
+
+  ranked.forEach(({d, owned, points, spent}) => {
+    const group = document.createElement('div');
+    group.className = 'owner-group';
+    group.innerHTML = `
+      <div class="owner-head">
+        <h2>${d.name}</h2>
+        <div class="sub">${owned.length} team${owned.length === 1 ? '' : 's'} · ${points} points · $${spent} spent</div>
+      </div>
+      <div class="rows"></div>
+    `;
+    const rowsEl = group.querySelector('.rows');
+    owned.slice().sort((a, b) => teamPoints(b) - teamPoints(a)).forEach(t => {
+      rowsEl.appendChild(buildTeamRow(t));
+    });
+    el.appendChild(group);
+  });
+
+  const unclaimed = state.teams.filter(t => !t.owner);
+  if(unclaimed.length){
+    const group = document.createElement('div');
+    group.className = 'owner-group unclaimed';
+    group.innerHTML = `<div class="owner-head"><h2>Unclaimed</h2><div class="sub">Not assigned to a drafter — not scored</div></div><div class="rows"></div>`;
+    const rowsEl = group.querySelector('.rows');
+    unclaimed.forEach(t => rowsEl.appendChild(buildTeamRow(t)));
+    el.appendChild(group);
+  }
+}
+
+function buildTeamRow(t){
+  const row = document.createElement('div');
+  row.className = 'team-row';
+  const pts = teamPoints(t);
+  const value = t.price ? (pts / t.price).toFixed(2) : null;
+  const steps = PLAYOFF_STEP[state.scoringMode];
+
+  row.innerHTML = `
+    <div class="stripe" style="background:${t.c1}"></div>
+    <div class="id-block">
+      <div class="div">${t.conf} ${t.div}</div>
+      <div class="nm">${t.city} ${t.nick}</div>
+      ${t.price != null ? `<div class="price">bought for $${t.price}</div>` : ''}
+    </div>
+    <div class="counter-group">
+      <div class="counter">
+        <span class="lbl">W</span>
+        <div class="ctrl">
+          <button type="button" data-stat="wins" data-delta="-1">−</button>
+          <span class="val">${t.wins}</span>
+          <button type="button" data-stat="wins" data-delta="1">+</button>
+        </div>
+      </div>
+      <div class="counter">
+        <span class="lbl">L</span>
+        <div class="ctrl">
+          <button type="button" data-stat="losses" data-delta="-1">−</button>
+          <span class="val">${t.losses}</span>
+          <button type="button" data-stat="losses" data-delta="1">+</button>
+        </div>
+      </div>
+      <div class="counter">
+        <span class="lbl">T</span>
+        <div class="ctrl">
+          <button type="button" data-stat="ties" data-delta="-1">−</button>
+          <span class="val">${t.ties}</span>
+          <button type="button" data-stat="ties" data-delta="1">+</button>
+        </div>
+      </div>
+    </div>
+    <div class="ladder">
+      ${LADDER_LABELS.map((label, i) => {
+        const key = ROUND_KEYS[i];
+        const filled = t.rounds[key];
+        return `<div class="node ${filled ? 'filled' : ''}" data-key="${key}">
+          <span class="t">${label}</span>
+          <span class="p">+${steps[i]}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <div>
+      <div class="team-points">${pts}</div>
+      ${value ? `<div class="team-value">${value} pts/$</div>` : ''}
+    </div>
+  `;
+
+  row.querySelectorAll('.counter-group button').forEach(btn => {
+    btn.addEventListener('click', () => bumpStat(t.id, btn.dataset.stat, Number(btn.dataset.delta)));
+  });
+  row.querySelectorAll('.ladder .node').forEach(node => {
+    node.addEventListener('click', () => toggleRound(t.id, node.dataset.key));
+  });
+
+  return row;
+}
+
+// ---------------------------------------------------------------
+// Wire up top-level controls
+// ---------------------------------------------------------------
+document.getElementById('modeLinear').addEventListener('click', () => setScoringMode('linear'));
+document.getElementById('modeFib').addEventListener('click', () => setScoringMode('fib'));
+document.getElementById('btnResetSeason').addEventListener('click', resetSeason);
+document.getElementById('btnExport').addEventListener('click', exportState);
+document.getElementById('btnImportTrigger').addEventListener('click', () => document.getElementById('importFile').click());
+document.getElementById('importFile').addEventListener('change', (e) => {
+  if(e.target.files[0]) importFile(e.target.files[0]);
+  e.target.value = '';
+});
+
+// ---------------------------------------------------------------
+// Firebase live sync — this is the only part that makes this page
+// "live." Everything above works exactly like the offline version;
+// this block just mirrors `state` into a shared Firebase Realtime
+// Database so every open tab sees the same data.
+//
+// 1) Paste the config object from your Firebase project's
+//    Project settings > Your apps > (web app) > SDK setup and config.
+// ---------------------------------------------------------------
+const firebaseConfig = {
+  apiKey: "AIzaSyBJj7bcAvPu5hxL1F1Ec3Da7WWwYToFsdk",
+  authDomain: "nfl-250.firebaseapp.com",
+  databaseURL: "https://nfl-250-default-rtdb.firebaseio.com",
+  projectId: "nfl-250",
+  storageBucket: "nfl-250.firebasestorage.app",
+  messagingSenderId: "64576618431",
+  appId: "1:64576618431:web:bc68bec0a5c160fde7eb0a"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const ledgerRef = db.ref('ledger');
+
+let suppressPush = false; // true while we're applying a remote update, to avoid an echo write
+
+function syncAndRender(){
+  render();
+  if(!suppressPush) ledgerRef.set(state);
+}
+
+db.ref('.info/connected').on('value', (snap) => {
+  const el = document.getElementById('syncStatus');
+  if(el) el.textContent = snap.val() ? 'Synced — live' : 'Offline — reconnecting…';
+});
+
+ledgerRef.on('value', (snapshot) => {
+  const remote = snapshot.val();
+  suppressPush = true;
+  if(remote){
+    state = remote;
+  } else {
+    // nothing in the database yet — seed it with the default roster
+    state = freshSeasonState(DEFAULT_ROSTER, 'fib');
+    ledgerRef.set(state);
+  }
+  render();
+  suppressPush = false;
+
+  // as soon as this tab has real shared data to work with, kick off the
+  // first automatic regular-season score sync
+  if(!didInitialScoreSync){
+    didInitialScoreSync = true;
+    syncRegularSeasonScores(false);
+  }
+});
+
+// ---------------------------------------------------------------
+// Automatic regular season score sync — pulls completed regular
+// season results from ESPN's public (unofficial, no-key-needed)
+// scoreboard feed and overwrites each team's W/L/T. Playoffs are
+// left alone here; keep marking those with the ladder checkboxes.
+// ---------------------------------------------------------------
+const ESPN_ABBR = {
+  buf:'BUF', mia:'MIA', ne:'NE', nyj:'NYJ',
+  bal:'BAL', cin:'CIN', cle:'CLE', pit:'PIT',
+  hou:'HOU', ind:'IND', jax:'JAX', ten:'TEN',
+  den:'DEN', kc:'KC', lv:'LV', lac:'LAC',
+  dal:'DAL', nyg:'NYG', phi:'PHI', was:'WSH',
+  chi:'CHI', det:'DET', gb:'GB', min:'MIN',
+  atl:'ATL', car:'CAR', no:'NO', tb:'TB',
+  ari:'ARI', lar:'LAR', sf:'SF', sea:'SEA',
+};
+
+let didInitialScoreSync = false;
+
+async function syncRegularSeasonScores(manual){
+  if(!state) return;
+  const statusEl = document.getElementById('scoreSyncStatus');
+  if(statusEl) statusEl.textContent = manual ? 'Syncing scores…' : 'Auto-syncing scores…';
+  try{
+    const base = await fetch('https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard').then(r => r.json());
+    const year = base && base.season && base.season.year;
+    const currentWeek = (base && base.week && base.week.number) || 1;
+    if(!year) throw new Error('Could not determine current NFL season/week');
+
+    // pull every completed regular-season week so far and tally records —
+    // recomputed from scratch each time so re-running this is always safe
+    const records = {};
+    for(let wk = 1; wk <= currentWeek; wk++){
+      const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=${wk}&seasontype=2&year=${year}`;
+      const data = await fetch(url).then(r => r.json());
+      (data.events || []).forEach(ev => {
+        const comp = ev.competitions && ev.competitions[0];
+        if(!comp || !comp.status || !comp.status.type || !comp.status.type.completed) return;
+        const [a, b] = comp.competitors || [];
+        if(!a || !b) return;
+        const scoreA = Number(a.score), scoreB = Number(b.score);
+        const abbrA = a.team.abbreviation, abbrB = b.team.abbreviation;
+        records[abbrA] = records[abbrA] || {w:0, l:0, t:0};
+        records[abbrB] = records[abbrB] || {w:0, l:0, t:0};
+        if(scoreA === scoreB){
+          records[abbrA].t++; records[abbrB].t++;
+        } else if(a.winner){
+          records[abbrA].w++; records[abbrB].l++;
+        } else if(b.winner){
+          records[abbrB].w++; records[abbrA].l++;
+        }
+      });
+    }
+
+    let changed = false;
+    state.teams.forEach(t => {
+      const abbr = ESPN_ABBR[t.id];
+      const rec = abbr && records[abbr];
+      if(!rec) return;
+      if(t.wins !== rec.w || t.losses !== rec.l || t.ties !== rec.t){
+        t.wins = rec.w; t.losses = rec.l; t.ties = rec.t;
+        changed = true;
+      }
+    });
+
+    if(changed) syncAndRender(); else render();
+    if(statusEl) statusEl.textContent = `Scores synced — through week ${currentWeek}`;
+  }catch(err){
+    console.error('Score sync failed:', err);
+    if(statusEl) statusEl.textContent = "Couldn't reach the score feed — will try again shortly.";
+  }
+}
+
+document.getElementById('btnSyncScores').addEventListener('click', () => syncRegularSeasonScores(true));
+setInterval(() => syncRegularSeasonScores(false), 5 * 60 * 1000); // re-check every 5 minutes while this tab stays open
+</script>
+</body>
+</html>
