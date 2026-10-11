@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <style>
   :root{
     --field:#16321F;
@@ -92,12 +93,9 @@
   .team-row .id-block .nm{font-family:'Anton',sans-serif; font-size:17px;}
   .team-row .id-block .price{font-size:11px; color:var(--chalk-dim); margin-top:1px;}
 
-  .counter-group{display:flex; gap:14px;}
-  .counter{display:flex; flex-direction:column; align-items:center; gap:3px;}
-  .counter .lbl{font-size:9px; color:var(--chalk-dim); text-transform:uppercase; letter-spacing:0.06em;}
-  .counter .ctrl{display:flex; align-items:center; gap:5px;}
-  .counter button{width:22px; height:22px; padding:0; font-size:13px; line-height:1;}
-  .counter .val{font-family:'Anton',sans-serif; font-size:16px; min-width:16px; text-align:center;}
+  .record-display{display:flex; flex-direction:column; align-items:center; gap:3px; min-width:72px;}
+  .record-display .lbl{font-size:9px; color:var(--chalk-dim); text-transform:uppercase; letter-spacing:0.06em;}
+  .record-display .val{font-family:'Anton',sans-serif; font-size:18px;}
 
   .ladder{display:flex; gap:4px;}
   .ladder .node{
@@ -120,15 +118,46 @@
     .leaderboard{grid-template-columns:repeat(2,1fr);}
     .team-points, .team-value{margin-left:0; text-align:left;}
   }
+
+  /* ---------- sign-in gate ---------- */
+  #authGate{
+    position:fixed; inset:0; z-index:100;
+    background:var(--field-3); display:flex; align-items:center; justify-content:center;
+    padding:24px;
+  }
+  #authGate.hidden{display:none;}
+  .gate-card{
+    background:var(--field-2); border-top:3px solid var(--gold);
+    padding:32px 36px; max-width:380px; text-align:center;
+  }
+  .gate-card h2{font-family:'Anton',sans-serif; font-size:26px; margin:0 0 8px;}
+  .gate-card p{font-size:13px; color:var(--chalk-dim); margin:0 0 20px; line-height:1.5;}
+  .gate-card p.denied{color:#E0836B;}
+  #btnGoogleSignIn{
+    background:var(--chalk); color:var(--field-3); border:none;
+    padding:11px 20px; font-size:14px; font-weight:700; width:100%;
+  }
+  #btnGoogleSignIn:hover{background:var(--gold);}
+  .who-signed-in{font-size:12px; color:var(--chalk-dim);}
+  .who-signed-in button{padding:4px 10px; font-size:11px; margin-left:8px;}
 </style>
 </head>
 <body>
+
+<div id="authGate" class="hidden">
+  <div class="gate-card">
+    <h2>SEASON LEDGER</h2>
+    <p id="gateMessage">Sign in with the Google account you draft under to view and update the ledger.</p>
+    <button type="button" id="btnGoogleSignIn">Sign in with Google</button>
+  </div>
+</div>
 
 <header>
   <div>
     <h1>SEASON <span>LEDGER</span></h1>
     <p class="sub">Regular season wins minus ties, plus a bonus every time your team wins a playoff round. Update it week to week as results come in.</p>
     <p class="sub" id="syncStatus" style="margin-top:6px;">Connecting to live data…</p>
+    <p class="who-signed-in" id="whoSignedIn" style="margin-top:4px;"></p>
   </div>
   <div class="setup">
     <div>
@@ -153,6 +182,8 @@
 <div class="leaderboard" id="leaderboard"></div>
 
 <div id="groups"></div>
+
+<footer>Runs entirely in this tab — nothing saves automatically. Export after each week's updates, and Import to pick back up (also accepts a Draft Night roster export to start a fresh ledger).</footer>
 
 <script>
 // ---------------------------------------------------------------
@@ -263,12 +294,6 @@ function drafterTotals(d){
 // ---------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------
-function bumpStat(teamId, stat, delta){
-  const t = team(teamId);
-  t[stat] = Math.max(0, (t[stat] || 0) + delta);
-  syncAndRender();
-}
-
 function toggleRound(teamId, key){
   const t = team(teamId);
   t.rounds[key] = !t.rounds[key];
@@ -410,31 +435,9 @@ function buildTeamRow(t){
       <div class="nm">${t.city} ${t.nick}</div>
       ${t.price != null ? `<div class="price">bought for $${t.price}</div>` : ''}
     </div>
-    <div class="counter-group">
-      <div class="counter">
-        <span class="lbl">W</span>
-        <div class="ctrl">
-          <button type="button" data-stat="wins" data-delta="-1">−</button>
-          <span class="val">${t.wins}</span>
-          <button type="button" data-stat="wins" data-delta="1">+</button>
-        </div>
-      </div>
-      <div class="counter">
-        <span class="lbl">L</span>
-        <div class="ctrl">
-          <button type="button" data-stat="losses" data-delta="-1">−</button>
-          <span class="val">${t.losses}</span>
-          <button type="button" data-stat="losses" data-delta="1">+</button>
-        </div>
-      </div>
-      <div class="counter">
-        <span class="lbl">T</span>
-        <div class="ctrl">
-          <button type="button" data-stat="ties" data-delta="-1">−</button>
-          <span class="val">${t.ties}</span>
-          <button type="button" data-stat="ties" data-delta="1">+</button>
-        </div>
-      </div>
+    <div class="record-display">
+      <span class="lbl">Record</span>
+      <span class="val">${t.wins}-${t.losses}-${t.ties}</span>
     </div>
     <div class="ladder">
       ${LADDER_LABELS.map((label, i) => {
@@ -452,9 +455,6 @@ function buildTeamRow(t){
     </div>
   `;
 
-  row.querySelectorAll('.counter-group button').forEach(btn => {
-    btn.addEventListener('click', () => bumpStat(t.id, btn.dataset.stat, Number(btn.dataset.delta)));
-  });
   row.querySelectorAll('.ladder .node').forEach(node => {
     node.addEventListener('click', () => toggleRound(t.id, node.dataset.key));
   });
@@ -505,31 +505,93 @@ function syncAndRender(){
   if(!suppressPush) ledgerRef.set(state);
 }
 
-db.ref('.info/connected').on('value', (snap) => {
-  const el = document.getElementById('syncStatus');
-  if(el) el.textContent = snap.val() ? 'Synced — live' : 'Offline — reconnecting…';
+// ---------------------------------------------------------------
+// Google sign-in, restricted to a fixed list of emails.
+//
+// 2) Replace these with the actual Gmail/Google-account addresses
+//    for everyone who should be able to view and edit the ledger.
+//    This list only controls the UI (a friendlier "not allowed"
+//    message) — the real enforcement is the Firebase database rule
+//    you set to match, since a client-side check alone can always
+//    be bypassed by someone editing the page's code.
+// ---------------------------------------------------------------
+const ALLOWED_EMAILS = [
+  "dlin92@gmail.com",
+  "kelvinclin273@gmail.com",
+  "mvatcher35rice@gmail.com",
+  "ted.m.mateoc@gmail.com",
+];
+
+const googleProvider = new firebase.auth.GoogleAuthProvider();
+const authGate = document.getElementById('authGate');
+const gateMessage = document.getElementById('gateMessage');
+const whoSignedIn = document.getElementById('whoSignedIn');
+
+function showGate(message, isDenied){
+  gateMessage.textContent = message;
+  gateMessage.className = isDenied ? 'denied' : '';
+  authGate.classList.remove('hidden');
+}
+function hideGate(){
+  authGate.classList.add('hidden');
+}
+
+document.getElementById('btnGoogleSignIn').addEventListener('click', () => {
+  firebase.auth().signInWithPopup(googleProvider).catch((err) => {
+    console.error('Google sign-in failed:', err);
+    showGate(`Sign-in didn't go through (${err.code}). Try again?`, true);
+  });
 });
 
-ledgerRef.on('value', (snapshot) => {
-  const remote = snapshot.val();
-  suppressPush = true;
-  if(remote){
-    state = remote;
+firebase.auth().onAuthStateChanged((user) => {
+  if(user && ALLOWED_EMAILS.includes(user.email)){
+    hideGate();
+    whoSignedIn.innerHTML = `Signed in as ${user.email} <button type="button" id="btnSignOut">Sign out</button>`;
+    document.getElementById('btnSignOut').addEventListener('click', () => firebase.auth().signOut());
+    attachDatabaseListeners();
+  } else if(user){
+    // signed in with Google, but not one of the approved accounts
+    showGate(`${user.email} isn't on the approved list for this ledger.`, true);
+    whoSignedIn.textContent = '';
+    firebase.auth().signOut();
   } else {
-    // nothing in the database yet — seed it with the default roster
-    state = freshSeasonState(DEFAULT_ROSTER, 'fib');
-    ledgerRef.set(state);
-  }
-  render();
-  suppressPush = false;
-
-  // as soon as this tab has real shared data to work with, kick off the
-  // first automatic regular-season score sync
-  if(!didInitialScoreSync){
-    didInitialScoreSync = true;
-    syncRegularSeasonScores(false);
+    showGate('Sign in with the Google account you draft under to view and update the ledger.', false);
+    whoSignedIn.textContent = '';
   }
 });
+
+// ---------------------------------------------------------------
+// This only attaches the actual database listeners once a session
+// exists and has passed the allowlist check above, so no read or
+// write is attempted before Firebase will allow one.
+// ---------------------------------------------------------------
+function attachDatabaseListeners(){
+  db.ref('.info/connected').on('value', (snap) => {
+    const el = document.getElementById('syncStatus');
+    if(el) el.textContent = snap.val() ? 'Synced — live' : 'Offline — reconnecting…';
+  });
+
+  ledgerRef.on('value', (snapshot) => {
+    const remote = snapshot.val();
+    suppressPush = true;
+    if(remote){
+      state = remote;
+    } else {
+      // nothing in the database yet — seed it with the default roster
+      state = freshSeasonState(DEFAULT_ROSTER, 'fib');
+      ledgerRef.set(state);
+    }
+    render();
+    suppressPush = false;
+
+    // as soon as this tab has real shared data to work with, kick off the
+    // first automatic regular-season score sync
+    if(!didInitialScoreSync){
+      didInitialScoreSync = true;
+      syncRegularSeasonScores(false);
+    }
+  });
+}
 
 // ---------------------------------------------------------------
 // Automatic regular season score sync — pulls completed regular
